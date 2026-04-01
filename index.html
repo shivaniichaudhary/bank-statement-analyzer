@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bank Statement Analyzer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #1a1a1a; min-height: 100vh; }
+  .container { max-width: 800px; margin: 0 auto; padding: 2rem 1rem; }
+  header { text-align: center; margin-bottom: 2rem; }
+  header h1 { font-size: 1.8rem; font-weight: 600; color: #111; }
+  header p { font-size: 0.9rem; color: #666; margin-top: 6px; }
+
+  /* Upload */
+  #upload-section { background: #fff; border-radius: 16px; padding: 2.5rem; text-align: center; border: 1px solid #e5e5e5; }
+  #upload-zone { border: 2px dashed #d0d0d0; border-radius: 12px; padding: 2.5rem 1rem; cursor: pointer; transition: all 0.2s; }
+  #upload-zone:hover, #upload-zone.dragover { border-color: #185FA5; background: #f0f6ff; }
+  #upload-zone svg { display: block; margin: 0 auto 12px; }
+  #upload-zone h3 { font-size: 1rem; font-weight: 500; color: #222; }
+  #upload-zone p { font-size: 0.82rem; color: #888; margin-top: 5px; }
+  .demo-btn { margin-top: 1.2rem; background: none; border: 1px solid #d0d0d0; border-radius: 8px; padding: 8px 20px; font-size: 0.85rem; cursor: pointer; color: #444; transition: all 0.2s; }
+  .demo-btn:hover { border-color: #185FA5; color: #185FA5; }
+  #progress-wrap { margin-top: 12px; display: none; }
+  #progress-wrap p { font-size: 0.82rem; color: #666; margin-bottom: 6px; }
+  .progress-bar { height: 4px; background: #e5e5e5; border-radius: 2px; overflow: hidden; }
+  .progress-fill { height: 100%; background: #185FA5; border-radius: 2px; width: 0%; transition: width 0.3s; }
+  #upload-error { color: #c0392b; font-size: 0.82rem; margin-top: 8px; display: none; }
+
+  /* Results */
+  #results { display: none; }
+  .results-header { background: #fff; border-radius: 16px; padding: 1.2rem 1.5rem; border: 1px solid #e5e5e5; margin-bottom: 1rem; display: flex; align-items: center; justify-content: space-between; }
+  .results-header h2 { font-size: 1rem; font-weight: 600; }
+  .results-header p { font-size: 0.8rem; color: #888; margin-top: 2px; }
+  .new-btn { background: none; border: 1px solid #d0d0d0; border-radius: 8px; padding: 6px 14px; font-size: 0.8rem; cursor: pointer; color: #555; transition: all 0.2s; }
+  .new-btn:hover { border-color: #185FA5; color: #185FA5; }
+
+  /* Metrics */
+  .metrics-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 1rem; }
+  @media(min-width: 500px) { .metrics-grid { grid-template-columns: repeat(4, 1fr); } }
+  .metric-card { background: #fff; border-radius: 12px; padding: 1rem; border: 1px solid #e5e5e5; }
+  .metric-label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+  .metric-value { font-size: 1.25rem; font-weight: 600; }
+  .metric-sub { font-size: 11px; color: #999; margin-top: 3px; }
+  .green { color: #1D9E75; } .red { color: #D85A30; } .blue { color: #185FA5; }
+
+  /* Tabs */
+  .card { background: #fff; border-radius: 16px; border: 1px solid #e5e5e5; overflow: hidden; margin-bottom: 1rem; }
+  .tab-bar { display: flex; border-bottom: 1px solid #e5e5e5; }
+  .tab { flex: 1; padding: 12px; font-size: 0.85rem; background: none; border: none; cursor: pointer; color: #888; border-bottom: 2px solid transparent; transition: all 0.15s; }
+  .tab.active { color: #185FA5; border-bottom-color: #185FA5; font-weight: 500; }
+  .tab-content { padding: 1.25rem; display: none; }
+  .tab-content.active { display: block; }
+
+  /* Overview */
+  .section-label { font-size: 11px; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.05em; margin: 1.2rem 0 0.6rem; }
+  .section-label:first-child { margin-top: 0; }
+  .chart-wrap { position: relative; height: 200px; }
+  .chart-legend { display: flex; gap: 16px; margin-top: 6px; font-size: 11px; color: #888; }
+  .chart-legend span { display: flex; align-items: center; gap: 4px; }
+  .dot { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+  .list-card { border: 1px solid #eee; border-radius: 10px; overflow: hidden; }
+  .list-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
+  .list-row:last-child { border-bottom: none; }
+  .list-rank { width: 18px; text-align: center; font-size: 11px; color: #aaa; flex-shrink: 0; }
+  .list-name { flex: 1; color: #222; }
+  .bar-wrap { width: 80px; height: 5px; background: #f0f0f0; border-radius: 3px; overflow: hidden; flex-shrink: 0; }
+  .bar-fill { height: 100%; border-radius: 3px; }
+  .list-amount { min-width: 64px; text-align: right; font-weight: 500; font-size: 12px; }
+
+  /* Category breakdown */
+  .cat-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
+  .cat-row:last-child { border-bottom: none; }
+  .cat-icon { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; }
+  .cat-name { width: 130px; flex-shrink: 0; color: #333; font-size: 12px; }
+  .cat-bar-bg { flex: 1; height: 5px; background: #f0f0f0; border-radius: 3px; overflow: hidden; }
+  .cat-bar-fill { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
+  .cat-amount { min-width: 60px; text-align: right; font-size: 12px; font-weight: 500; color: #333; }
+
+  /* Transactions */
+  .search-input { width: 100%; padding: 9px 12px; border: 1px solid #e5e5e5; border-radius: 8px; font-size: 13px; margin-bottom: 10px; outline: none; }
+  .search-input:focus { border-color: #185FA5; }
+  .filter-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .filter-row input, .filter-row select { font-size: 12px; padding: 6px 8px; border: 1px solid #e5e5e5; border-radius: 7px; outline: none; background: #fff; }
+  .filter-row input:focus, .filter-row select:focus { border-color: #185FA5; }
+  .filter-btn { font-size: 12px; padding: 6px 14px; border: 1px solid #d0d0d0; border-radius: 7px; background: #fff; cursor: pointer; color: #444; transition: all 0.15s; }
+  .filter-btn:hover { border-color: #185FA5; color: #185FA5; }
+  .txn-count { font-size: 12px; color: #888; margin-bottom: 8px; }
+  .txn-list { border: 1px solid #eee; border-radius: 10px; overflow: hidden; max-height: 440px; overflow-y: auto; }
+  .txn-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid #f5f5f5; }
+  .txn-row:last-child { border-bottom: none; }
+  .txn-icon { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; }
+  .txn-main { flex: 1; min-width: 0; }
+  .txn-desc { font-size: 13px; color: #222; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .txn-meta { font-size: 11px; color: #aaa; margin-top: 1px; }
+  .txn-right { text-align: right; flex-shrink: 0; }
+  .txn-amount { font-size: 13px; font-weight: 600; }
+  .txn-cat { font-size: 10px; color: #aaa; margin-top: 1px; }
+  .empty-state { text-align: center; padding: 2rem; color: #aaa; font-size: 13px; }
+
+  /* Insights */
+  .insight-card { background: #f9f9f9; border-radius: 10px; padding: 12px 14px; display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px; border: 1px solid #eee; }
+  .insight-icon { font-size: 18px; flex-shrink: 0; }
+  .insight-text { font-size: 13px; color: #333; line-height: 1.55; }
+  .insight-text strong { font-weight: 600; color: #111; }
+  .trend-wrap { position: relative; height: 160px; margin-top: 1rem; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>Bank Statement Analyzer</h1>
+    <p>Upload a PDF bank statement — get instant insights powered by AI</p>
+  </header>
+
+  <!-- Upload Section -->
+  <div id="upload-section">
+    <div id="upload-zone"
+      onclick="document.getElementById('file-input').click()"
+      ondragover="handleDragOver(event)"
+      ondragleave="handleDragLeave(event)"
+      ondrop="handleDrop(event)">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#aaa" stroke-width="1.5">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="12" y1="18" x2="12" y2="12"/>
+        <line x1="9" y1="15" x2="15" y2="15"/>
+      </svg>
+      <h3>Drop your bank statement PDF here</h3>
+      <p>Supports HDFC · SBI · ICICI · Axis · Kotak and most Indian banks</p>
+    </div>
+    <input type="file" id="file-input" accept=".pdf" style="display:none" onchange="handleFile(event)">
+    <div id="progress-wrap">
+      <p id="progress-msg">Reading PDF...</p>
+      <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+    </div>
+    <p id="upload-error"></p>
+    <button class="demo-btn" onclick="loadDemo()">Try with demo data</button>
+  </div>
+
+  <!-- Results -->
+  <div id="results">
+    <div class="results-header">
+      <div>
+        <h2 id="r-name">Account Summary</h2>
+        <p id="r-period">—</p>
+      </div>
+      <button class="new-btn" onclick="resetApp()">New statement</button>
+    </div>
+
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-label">Total credits</div>
+        <div class="metric-value green" id="m-credit">—</div>
+        <div class="metric-sub" id="m-credit-sub"></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Total debits</div>
+        <div class="metric-value red" id="m-debit">—</div>
+        <div class="metric-sub" id="m-debit-sub"></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Net balance</div>
+        <div class="metric-value" id="m-net">—</div>
+        <div class="metric-sub" id="m-net-sub"></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Avg. transaction</div>
+        <div class="metric-value blue" id="m-avg">—</div>
+        <div class="metric-sub">per transaction</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="tab-bar">
+        <button class="tab active" onclick="switchTab('overview')">Overview</button>
+        <button class="tab" onclick="switchTab('transactions')">Transactions</button>
+        <button class="tab" onclick="switchTab('insights')">Insights</button>
+      </div>
+
+      <!-- OVERVIEW TAB -->
+      <div class="tab-content active" id="tab-overview">
+        <p class="section-label">Monthly flow</p>
+        <div class="chart-wrap"><canvas id="chart-monthly"></canvas></div>
+        <div class="chart-legend">
+          <span><span class="dot" style="background:#1D9E75"></span>Credits</span>
+          <span><span class="dot" style="background:#D85A30"></span>Debits</span>
+        </div>
+        <p class="section-label">Spending by category</p>
+        <div class="list-card" id="cat-breakdown"></div>
+        <p class="section-label">Top payees</p>
+        <div class="list-card" id="top-payees"></div>
+      </div>
+
+      <!-- TRANSACTIONS TAB -->
+      <div class="tab-content" id="tab-transactions">
+        <input class="search-input" type="text" placeholder="Search transactions..." oninput="filterTxns(this.value)">
+        <div class="filter-row">
+          <input type="date" id="fd1">
+          <span style="font-size:12px;color:#aaa;align-self:center;">to</span>
+          <input type="date" id="fd2">
+          <select id="ftype">
+            <option value="">All types</option>
+            <option value="credit">Credits</option>
+            <option value="debit">Debits</option>
+          </select>
+          <select id="fcat" style="min-width:120px;"></select>
+          <button class="filter-btn" onclick="applyFilters()">Apply</button>
+          <button class="filter-btn" onclick="clearFilters()">Clear</button>
+        </div>
+        <p class="txn-count" id="txn-count-label"></p>
+        <div class="txn-list" id="txn-list"></div>
+      </div>
+
+      <!-- INSIGHTS TAB -->
+      <div class="tab-content" id="tab-insights">
+        <div id="insights-list"></div>
+        <p class="section-label">Monthly spending trend</p>
+        <div class="trend-wrap"><canvas id="chart-trend"></canvas></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── CONFIG ───────────────────────────────────────────────────────────
+const API_KEY = "YOUR_ANTHROPIC_API_KEY_HERE";
+// ──────────────────────────────────────────────────────────────────────
+
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+let ALL = [], FILTERED = [], charts = {};
+
+const CATS = {
+  salary:   { label: 'Salary / Income',   color: '#1D9E75', bg: '#E1F5EE', emoji: '💰' },
+  rent:     { label: 'Rent & Housing',    color: '#185FA5', bg: '#E6F1FB', emoji: '🏠' },
+  food:     { label: 'Food & Dining',     color: '#E9783A', bg: '#FEF0E7', emoji: '🍽️' },
+  shopping: { label: 'Shopping',          color: '#D85A30', bg: '#FAECE7', emoji: '🛍️' },
+  bills:    { label: 'Bills & Utilities', color: '#888780', bg: '#F1EFE8', emoji: '⚡' },
+  health:   { label: 'Health',            color: '#D4537E', bg: '#FBEAF0', emoji: '❤️' },
+  travel:   { label: 'Travel & Fuel',     color: '#BA7517', bg: '#FAEEDA', emoji: '🚗' },
+  transfer: { label: 'Transfers',         color: '#7F77DD', bg: '#EEEDFE', emoji: '↔️' },
+  other:    { label: 'Other',             color: '#888780', bg: '#F1EFE8', emoji: '•'  },
+};
+
+function categorize(desc) {
+  const d = (desc || '').toLowerCase();
+  if (/salary|payroll|infosys|tcs|wipro|accenture|hcl|income|freelance|dividend/.test(d)) return 'salary';
+  if (/rent|property|housing/.test(d)) return 'rent';
+  if (/swiggy|zomato|bigbasket|grocer|restaurant|food|cafe|hotel|dominos|mcdonald|instamart/.test(d)) return 'food';
+  if (/amazon|flipkart|myntra|shopping|store|mall|meesho/.test(d)) return 'shopping';
+  if (/electric|mseb|bescom|water|gas|jio|airtel|vi |bsnl|recharge|broadband/.test(d)) return 'bills';
+  if (/petrol|bpcl|iocl|hpcl|fuel|cab|ola|uber|metro|flight|irctc|train/.test(d)) return 'travel';
+  if (/hospital|clinic|medical|pharma|apollo|fortis|insurance|ergo|star health/.test(d)) return 'health';
+  if (/upi|neft|imps|rtgs|transfer|sent|received|zerodha|groww/.test(d)) return 'transfer';
+  return 'other';
+}
+
+function fmt(n) { return '₹' + Math.round(Math.abs(n)).toLocaleString('en-IN'); }
+function fmtK(n) {
+  n = Math.abs(n);
+  if (n >= 100000) return '₹' + (n / 100000).toFixed(1) + 'L';
+  if (n >= 1000)   return '₹' + (n / 1000).toFixed(0) + 'k';
+  return fmt(n);
+}
+
+// ─── DRAG & DROP ──────────────────────────────────────────────────────
+function handleDragOver(e) { e.preventDefault(); document.getElementById('upload-zone').classList.add('dragover'); }
+function handleDragLeave()  { document.getElementById('upload-zone').classList.remove('dragover'); }
+function handleDrop(e) { e.preventDefault(); handleDragLeave(); const f = e.dataTransfer.files[0]; if (f) processFile(f); }
+function handleFile(e)  { const f = e.target.files[0]; if (f) processFile(f); }
+
+// ─── PDF PROCESSING ───────────────────────────────────────────────────
+async function processFile(file) {
+  setProgress('Reading PDF…', 15);
+  try {
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+    let text = '';
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      text += content.items.map(s => s.str).join(' ') + '\n';
+    }
+    setProgress('AI is analyzing…', 55);
+    await callClaude(text);
+  } catch (err) {
+    showError('Could not read PDF. Please try demo data.');
+  }
+}
+
+async function callClaude(text) {
+  const prompt = `Parse this bank statement and return ONLY a valid JSON object (no markdown, no explanation):
+{
+  "accountName": "account holder name and last 4 digits if visible",
+  "period": "e.g. Jan–Mar 2025",
+  "transactions": [
+    { "date": "YYYY-MM-DD", "description": "string", "amount": number, "type": "credit or debit", "account": "counterparty name" }
+  ]
+}
+Rules: amount is always a positive number. type is credit if money came IN, debit if money went OUT. Extract every transaction found.
+
+BANK STATEMENT TEXT:
+${text.slice(0, 8000)}`;
+
+  try {
+    setProgress('Parsing transactions…', 80);
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': API_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 2000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    const data = await res.json();
+    const raw = data.content.map(c => c.text || '').join('');
+    const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    setProgress('Done!', 100);
+    setTimeout(() => render(parsed), 300);
+  } catch (e) {
+    showError('AI parsing failed. Loading demo data instead…');
+    setTimeout(loadDemo, 1000);
+  }
+}
+
+// ─── DEMO DATA ────────────────────────────────────────────────────────
+function loadDemo() {
+  render({
+    accountName: 'Rahul Sharma — HDFC Savings ••4821',
+    period: 'Jan – Mar 2025',
+    transactions: [
+      { date:'2025-01-01', description:'Salary credit', amount:75000, type:'credit', account:'Infosys Ltd' },
+      { date:'2025-01-05', description:'Rent payment', amount:18000, type:'debit', account:'Rajesh Properties' },
+      { date:'2025-01-08', description:'BigBasket groceries', amount:3200, type:'debit', account:'BigBasket' },
+      { date:'2025-01-12', description:'Swiggy dinner', amount:620, type:'debit', account:'Swiggy' },
+      { date:'2025-01-15', description:'UPI received - Priya K', amount:5000, type:'credit', account:'Priya K' },
+      { date:'2025-01-20', description:'MSEB electricity bill', amount:1800, type:'debit', account:'MSEB' },
+      { date:'2025-01-22', description:'Jio recharge', amount:399, type:'debit', account:'Jio' },
+      { date:'2025-01-25', description:'Amazon purchase', amount:2100, type:'debit', account:'Amazon' },
+      { date:'2025-01-28', description:'BPCL petrol', amount:2200, type:'debit', account:'BPCL' },
+      { date:'2025-02-01', description:'Salary credit', amount:75000, type:'credit', account:'Infosys Ltd' },
+      { date:'2025-02-03', description:'Rent payment', amount:18000, type:'debit', account:'Rajesh Properties' },
+      { date:'2025-02-05', description:'Freelance - TechStart', amount:22000, type:'credit', account:'TechStart Inc' },
+      { date:'2025-02-09', description:'Zomato order', amount:850, type:'debit', account:'Zomato' },
+      { date:'2025-02-12', description:'HDFC Ergo insurance', amount:6200, type:'debit', account:'HDFC Ergo' },
+      { date:'2025-02-14', description:'Myntra shopping', amount:3400, type:'debit', account:'Myntra' },
+      { date:'2025-02-18', description:'Zerodha dividend', amount:3100, type:'credit', account:'Zerodha' },
+      { date:'2025-02-22', description:'Uber cab', amount:780, type:'debit', account:'Uber' },
+      { date:'2025-02-26', description:'Apollo pharmacy', amount:1250, type:'debit', account:'Apollo Pharmacy' },
+      { date:'2025-03-01', description:'Salary credit', amount:75000, type:'credit', account:'Infosys Ltd' },
+      { date:'2025-03-04', description:'Rent payment', amount:18000, type:'debit', account:'Rajesh Properties' },
+      { date:'2025-03-07', description:'Swiggy Instamart', amount:1100, type:'debit', account:'Swiggy' },
+      { date:'2025-03-10', description:'IRCTC train ticket', amount:1450, type:'debit', account:'IRCTC' },
+      { date:'2025-03-14', description:'Received - Amit Gupta', amount:8000, type:'credit', account:'Amit Gupta' },
+      { date:'2025-03-18', description:'Flipkart purchase', amount:5600, type:'debit', account:'Flipkart' },
+      { date:'2025-03-22', description:'BPCL petrol', amount:2400, type:'debit', account:'BPCL' },
+      { date:'2025-03-28', description:'Star Health premium', amount:4800, type:'debit', account:'Star Health' },
+    ]
+  });
+}
+
+// ─── RENDER ───────────────────────────────────────────────────────────
+function render(data) {
+  document.getElementById('upload-section').style.display = 'none';
+  document.getElementById('results').style.display = 'block';
+  ALL = (data.transactions || []).map(t => ({ ...t, cat: categorize(t.description + ' ' + t.account) }));
+  FILTERED = [...ALL];
+  document.getElementById('r-name').textContent = data.accountName || 'Account';
+  document.getElementById('r-period').textContent = data.period || '';
+  updateMetrics(ALL);
+  renderOverview(ALL);
+  renderTxns(ALL);
+  renderInsights(ALL);
+  populateCatFilter();
+}
+
+function updateMetrics(txns) {
+  const cr = txns.filter(t => t.type === 'credit').reduce((s, t) => s + t.amount, 0);
+  const db = txns.filter(t => t.type === 'debit').reduce((s, t) => s + t.amount, 0);
+  const net = cr - db;
+  const avg = txns.length ? (cr + db) / txns.length : 0;
+  const crC = txns.filter(t => t.type === 'credit').length;
+  const dbC = txns.filter(t => t.type === 'debit').length;
+
+  document.getElementById('m-credit').textContent = fmtK(cr);
+  document.getElementById('m-credit-sub').textContent = crC + ' transactions';
+  document.getElementById('m-debit').textContent = fmtK(db);
+  document.getElementById('m-debit-sub').textContent = dbC + ' transactions';
+  const netEl = document.getElementById('m-net');
+  netEl.textContent = (net >= 0 ? '+' : '-') + fmtK(Math.abs(net));
+  netEl.className = 'metric-value ' + (net >= 0 ? 'green' : 'red');
+  document.getElementById('m-net-sub').textContent = net >= 0 ? 'Positive flow' : 'Negative flow';
+  document.getElementById('m-avg').textContent = fmtK(avg);
+}
+
+// ─── OVERVIEW ─────────────────────────────────────────────────────────
+function renderOverview(txns) {
+  // Monthly bar chart
+  const months = {};
+  txns.forEach(t => {
+    const m = t.date.slice(0, 7);
+    if (!months[m]) months[m] = { cr: 0, db: 0 };
+    months[m][t.type === 'credit' ? 'cr' : 'db'] += t.amount;
+  });
+  const labels = Object.keys(months).sort();
+  if (charts.monthly) charts.monthly.destroy();
+  charts.monthly = new Chart(document.getElementById('chart-monthly'), {
+    type: 'bar',
+    data: {
+      labels: labels.map(l => { const [y, m] = l.split('-'); return new Date(y, m - 1).toLocaleString('default', { month: 'short' }); }),
+      datasets: [
+        { label: 'Credits', data: labels.map(m => Math.round(months[m].cr)), backgroundColor: '#1D9E75', borderRadius: 4 },
+        { label: 'Debits',  data: labels.map(m => Math.round(months[m].db)), backgroundColor: '#D85A30', borderRadius: 4 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#aaa', font: { size: 11 } }, grid: { display: false } },
+        y: { ticks: { color: '#aaa', font: { size: 10 }, callback: v => fmtK(v) }, grid: { color: '#f0f0f0' } }
+      }
+    }
+  });
+
+  // Category breakdown
+  const catTotals = {};
+  txns.filter(t => t.type === 'debit').forEach(t => { catTotals[t.cat] = (catTotals[t.cat] || 0) + t.amount; });
+  const maxCat = Math.max(...Object.values(catTotals), 1);
+  const sortedCats = Object.entries(catTotals).sort((a, b) => b[1] - a[1]);
+  document.getElementById('cat-breakdown').innerHTML = sortedCats.map(([cat, amt]) => {
+    const c = CATS[cat] || CATS.other;
+    const pct = Math.round((amt / maxCat) * 100);
+    return `<div class="cat-row">
+      <div class="cat-icon" style="background:${c.bg}">${c.emoji}</div>
+      <span class="cat-name">${c.label}</span>
+      <div class="cat-bar-bg"><div class="cat-bar-fill" style="width:${pct}%;background:${c.color}"></div></div>
+      <span class="cat-amount">${fmtK(amt)}</span>
+    </div>`;
+  }).join('') || '<div class="empty-state">No debit data</div>';
+
+  // Top payees
+  const payeeMap = {};
+  txns.filter(t => t.type === 'debit').forEach(t => { payeeMap[t.account] = (payeeMap[t.account] || 0) + t.amount; });
+  const topP = Object.entries(payeeMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const maxP = topP[0] ? topP[0][1] : 1;
+  document.getElementById('top-payees').innerHTML = topP.map(([name, amt], i) => `
+    <div class="list-row">
+      <span class="list-rank">${i + 1}</span>
+      <span class="list-name">${name}</span>
+      <div class="bar-wrap"><div class="bar-fill" style="width:${Math.round(amt/maxP*100)}%;background:#D85A30"></div></div>
+      <span class="list-amount red">${fmtK(amt)}</span>
+    </div>`).join('') || '<div class="empty-state">No data</div>';
+}
+
+// ─── TRANSACTIONS ─────────────────────────────────────────────────────
+function renderTxns(txns) {
+  document.getElementById('txn-count-label').textContent = txns.length + ' transactions';
+  const list = document.getElementById('txn-list');
+  if (!txns.length) { list.innerHTML = '<div class="empty-state">No transactions match your filters.</div>'; return; }
+  list.innerHTML = txns.map(t => {
+    const c = CATS[t.cat] || CATS.other;
+    return `<div class="txn-row">
+      <div class="txn-icon" style="background:${c.bg}">${c.emoji}</div>
+      <div class="txn-main">
+        <div class="txn-desc">${t.description}</div>
+        <div class="txn-meta">${t.date} · ${t.account}</div>
+      </div>
+      <div class="txn-right">
+        <div class="txn-amount ${t.type === 'credit' ? 'green' : 'red'}">${t.type === 'credit' ? '+' : '-'}${fmt(t.amount)}</div>
+        <div class="txn-cat">${c.label}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function filterTxns(q) {
+  q = q.toLowerCase();
+  const base = q ? ALL.filter(t => t.description.toLowerCase().includes(q) || t.account.toLowerCase().includes(q)) : ALL;
+  renderTxns(base);
+}
+
+function applyFilters() {
+  const from = document.getElementById('fd1').value;
+  const to   = document.getElementById('fd2').value;
+  const type = document.getElementById('ftype').value;
+  const cat  = document.getElementById('fcat').value;
+  FILTERED = ALL.filter(t => {
+    if (from && t.date < from) return false;
+    if (to   && t.date > to)   return false;
+    if (type && t.type !== type) return false;
+    if (cat  && t.cat  !== cat)  return false;
+    return true;
+  });
+  renderTxns(FILTERED);
+  updateMetrics(FILTERED);
+}
+
+function clearFilters() {
+  document.getElementById('fd1').value = '';
+  document.getElementById('fd2').value = '';
+  document.getElementById('ftype').value = '';
+  document.getElementById('fcat').value = '';
+  FILTERED = [...ALL];
+  renderTxns(ALL);
+  updateMetrics(ALL);
+}
+
+function populateCatFilter() {
+  const cats = [...new Set(ALL.map(t => t.cat))];
+  document.getElementById('fcat').innerHTML =
+    '<option value="">All categories</option>' +
+    cats.map(c => `<option value="${c}">${CATS[c]?.label || c}</option>`).join('');
+}
+
+// ─── INSIGHTS ─────────────────────────────────────────────────────────
+function renderInsights(txns) {
+  const cr = txns.filter(t => t.type === 'credit').reduce((s, t) => s + t.amount, 0);
+  const db = txns.filter(t => t.type === 'debit').reduce((s, t) => s + t.amount, 0);
+  const savingsRate = cr > 0 ? Math.round(((cr - db) / cr) * 100) : 0;
+
+  const insights = [];
+  if (savingsRate > 0) {
+    insights.push({ icon: '📈', text: `Your savings rate is <strong>${savingsRate}%</strong> — you kept ${fmtK(cr - db)} of your income this period.` });
+  } else {
+    insights.push({ icon: '⚠️', text: `You spent <strong>${fmtK(db - cr)} more than you earned</strong> this period. Consider reviewing your largest expense categories.` });
+  }
+
+  const food = txns.filter(t => t.cat === 'food' && t.type === 'debit').reduce((s, t) => s + t.amount, 0);
+  if (food > 0 && cr > 0) {
+    insights.push({ icon: '🍽️', text: `Food & dining: <strong>${fmtK(food)}</strong> — ${Math.round((food / cr) * 100)}% of your income.` });
+  }
+
+  const payeeMap = {};
+  txns.filter(t => t.type === 'debit').forEach(t => { payeeMap[t.account] = (payeeMap[t.account] || 0) + t.amount; });
+  const top = Object.entries(payeeMap).sort((a, b) => b[1] - a[1])[0];
+  if (top) insights.push({ icon: '🏆', text: `Biggest payee: <strong>${top[0]}</strong> with <strong>${fmtK(top[1])}</strong> in total payments.` });
+
+  const months = {};
+  txns.filter(t => t.type === 'debit').forEach(t => { const m = t.date.slice(0, 7); months[m] = (months[m] || 0) + t.amount; });
+  const mKeys = Object.keys(months).sort();
+  if (mKeys.length >= 2) {
+    const last = months[mKeys[mKeys.length - 1]], prev = months[mKeys[mKeys.length - 2]];
+    const diff = Math.round(((last - prev) / prev) * 100);
+    insights.push({ icon: diff > 0 ? '📊' : '✅', text: `Spending ${diff > 0 ? 'went up' : 'went down'} by <strong>${Math.abs(diff)}%</strong> in the most recent month.` });
+  }
+
+  const txnCount = txns.length;
+  insights.push({ icon: '📋', text: `Total of <strong>${txnCount} transactions</strong> across this statement period.` });
+
+  document.getElementById('insights-list').innerHTML = insights.map(ins =>
+    `<div class="insight-card"><div class="insight-icon">${ins.icon}</div><div class="insight-text">${ins.text}</div></div>`
+  ).join('');
+
+  // Trend chart
+  const trendData = mKeys.map(m => Math.round(months[m] || 0));
+  if (charts.trend) charts.trend.destroy();
+  charts.trend = new Chart(document.getElementById('chart-trend'), {
+    type: 'line',
+    data: {
+      labels: mKeys.map(l => { const [y, m] = l.split('-'); return new Date(y, m - 1).toLocaleString('default', { month: 'short' }); }),
+      datasets: [{ data: trendData, borderColor: '#D85A30', backgroundColor: 'rgba(216,90,48,0.08)', borderWidth: 2, tension: 0.3, fill: true, pointRadius: 4, pointBackgroundColor: '#D85A30' }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#aaa', font: { size: 11 } }, grid: { display: false } },
+        y: { ticks: { color: '#aaa', font: { size: 10 }, callback: v => fmtK(v) }, grid: { color: '#f0f0f0' } }
+      }
+    }
+  });
+}
+
+// ─── TABS ─────────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    t.classList.toggle('active', ['overview', 'transactions', 'insights'][i] === name);
+  });
+  document.querySelectorAll('.tab-content').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+}
+
+// ─── UTILS ────────────────────────────────────────────────────────────
+function setProgress(msg, pct) {
+  const pw = document.getElementById('progress-wrap');
+  pw.style.display = 'block';
+  document.getElementById('progress-msg').textContent = msg;
+  document.getElementById('progress-fill').style.width = pct + '%';
+}
+
+function showError(msg) {
+  const e = document.getElementById('upload-error');
+  e.style.display = 'block';
+  e.textContent = msg;
+  document.getElementById('progress-wrap').style.display = 'none';
+}
+
+function resetApp() {
+  ALL = []; FILTERED = [];
+  document.getElementById('results').style.display = 'none';
+  document.getElementById('upload-section').style.display = 'block';
+  document.getElementById('progress-wrap').style.display = 'none';
+  document.getElementById('upload-error').style.display = 'none';
+  document.getElementById('file-input').value = '';
+}
+</script>
+</body>
+</html>
